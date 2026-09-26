@@ -1,5 +1,15 @@
 import { MAX_PAGE, type Search } from "./routes";
 
+/** What a TMDB search is asked. */
+export type TmdbQuery = {
+  query: string;
+  page: number;
+  /** Any release in that year. */
+  year?: string;
+  /** The first release, which is the year Letterboxd and TMDB give a film. */
+  primaryReleaseYear?: number;
+};
+
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_HOSTNAME = "api.themoviedb.org";
 const UPSTREAM_TIMEOUT_MS = 8000;
@@ -35,7 +45,7 @@ export type TmdbSearchResponse = {
   results: TmdbMovie[];
 };
 
-type RawMovie = {
+export type RawMovie = {
   id: number;
   title?: string;
   original_title?: string;
@@ -51,14 +61,20 @@ type RawSearch = {
   results: RawMovie[];
 };
 
-export function buildUpstreamUrl(search: Search) {
+export function buildUpstreamUrl(query: TmdbQuery) {
   const url = new URL(`${TMDB_BASE}/search/movie`);
   for (const [key, value] of Object.entries(FIXED_PARAMS)) {
     url.searchParams.set(key, value);
   }
-  url.searchParams.set("query", search.query);
-  url.searchParams.set("page", String(search.page));
-  if (search.year) url.searchParams.set("year", search.year);
+  url.searchParams.set("query", query.query);
+  url.searchParams.set("page", String(query.page));
+  if (query.year) url.searchParams.set("year", query.year);
+  if (query.primaryReleaseYear) {
+    url.searchParams.set(
+      "primary_release_year",
+      String(query.primaryReleaseYear),
+    );
+  }
   // Belt and braces: the URL is fixed apart from validated params, but
   // nothing should ever leave for another host with our token on it.
   if (url.hostname !== TMDB_HOSTNAME || url.protocol !== "https:") {
@@ -69,7 +85,7 @@ export function buildUpstreamUrl(search: Search) {
 
 // Leaves absent fields out rather than null, as Firestore rejects undefined
 // and the client can spread these straight into a list entry.
-function trimMovie(raw: RawMovie): TmdbMovie {
+export function trimMovie(raw: RawMovie): TmdbMovie {
   const year = raw.release_date?.match(/^(\d{4})-/)?.[1];
   return {
     id: String(raw.id),
@@ -94,15 +110,22 @@ function trimSearch(raw: RawSearch): TmdbSearchResponse {
   };
 }
 
-export async function fetchFromTmdb(
-  search: Search,
+/** TMDB's untrimmed answer. Throws on anything but a 200. */
+export async function fetchTmdbSearch(
+  query: TmdbQuery,
   token: string,
-): Promise<TmdbSearchResponse> {
-  const response = await fetch(buildUpstreamUrl(search), {
+): Promise<RawSearch> {
+  const response = await fetch(buildUpstreamUrl(query), {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`TMDB responded ${response.status}`);
+  return response.json();
+}
 
-  return trimSearch(await response.json());
+export async function fetchFromTmdb(
+  search: Search,
+  token: string,
+): Promise<TmdbSearchResponse> {
+  return trimSearch(await fetchTmdbSearch(search, token));
 }

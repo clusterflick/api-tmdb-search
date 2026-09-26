@@ -18,7 +18,8 @@
   },
   // Set with `wrangler secret put TMDB_TOKEN`, locally in `.dev.vars`.
   "secrets": { "required": ["TMDB_TOKEN"] },
-  // Both must pass. Per-location and approximate: they deter abuse rather than
+  // A request must pass its endpoint's per-uid limit and the IP one.
+  // Per-location and approximate: they deter abuse rather than
   // enforce a quota. Periods can only be 10 or 60 seconds.
   "ratelimits": [
     {
@@ -30,6 +31,12 @@
       "name": "IP_LIMIT",
       "namespace_id": "1002",
       "simple": { "limit": 60, "period": 60 },
+    },
+    // Imports, per uid: 13 batches of 15 films is ~195 films a minute.
+    {
+      "name": "MATCH_LIMIT",
+      "namespace_id": "1003",
+      "simple": { "limit": 13, "period": 60 },
     },
   ],
   "observability": { "enabled": true },

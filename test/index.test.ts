@@ -64,15 +64,18 @@ async function call(
   {
     token,
     method = "GET",
+    body,
     limits = {},
   }: {
     token?: string;
     method?: string;
-    limits?: { user?: typeof allow; ip?: typeof allow };
+    body?: unknown;
+    limits?: { user?: typeof allow; ip?: typeof allow; match?: typeof allow };
   } = {},
 ) {
   const request = new Request(`https://clusterflick.com${path}`, {
     method,
+    ...(body !== undefined && { body: JSON.stringify(body) }),
     headers: {
       "CF-Connecting-IP": "203.0.113.1",
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -82,6 +85,7 @@ async function call(
     ...env,
     USER_LIMIT: limits.user ?? allow,
     IP_LIMIT: limits.ip ?? allow,
+    MATCH_LIMIT: limits.match ?? allow,
   } as unknown as Env;
   const ctx = createExecutionContext();
   const response = await handleRequest(request, testEnv, ctx, TEST_KEYS);
@@ -279,6 +283,143 @@ describe("search", () => {
     const response = await call(`/api/tmdb/search?q=${uniqueQuery()}`, {
       token: await signToken(),
     });
+    expect(response.status).toBe(502);
+  });
+});
+
+describe("match", () => {
+  /** TMDB's results for each query, as `fetch` would return them. */
+  function tmdbKnows(byQuery: Record<string, object[]>) {
+    fetchSpy.mockImplementation(async (input) => {
+      const query = new URL(String(input)).searchParams.get("query") ?? "";
+      return Response.json({
+        page: 1,
+        total_pages: 1,
+        total_results: 0,
+        results: byQuery[query] ?? [],
+      });
+    });
+  }
+
+  const post = async (films: object[], limits = {}) =>
+    call("/api/tmdb/match", {
+      method: "POST",
+      body: { films },
+      token: await signToken(),
+      limits,
+    });
+
+  it("405s a GET, and search 405s a POST", async () => {
+    const match = await call("/api/tmdb/match");
+    expect(match.status).toBe(405);
+    expect(match.headers.get("Allow")).toBe("POST");
+    const search = await call("/api/tmdb/search?q=dune", { method: "POST" });
+    expect(search.headers.get("Allow")).toBe("GET");
+  });
+
+  it("400s a bad body before checking the token", async () => {
+    const response = await call("/api/tmdb/match", {
+      method: "POST",
+      body: { films: [] },
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("401s without a token", async () => {
+    const response = await call("/api/tmdb/match", {
+      method: "POST",
+      body: { films: [{ title: "Heat", year: 1995 }] },
+    });
+    expect(response.status).toBe(401);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("has its own per-reader limit, apart from search's", async () => {
+    tmdbKnows({});
+    const film = [{ title: `Limited ${testCount}`, year: 2001 }];
+    expect((await post(film, { match: deny })).status).toBe(429);
+    expect((await post(film, { user: deny })).status).toBe(200);
+  });
+
+  it("returns each film's match, or null, in the order asked", async () => {
+    const n = testCount;
+    tmdbKnows({
+      [`Heat ${n}`]: [
+        { id: 1, title: `Heat ${n} Wave`, release_date: "1995-01-01" },
+        {
+          id: 949,
+          title: `Heat ${n}`,
+          release_date: "1995-12-15",
+          poster_path: "/heat.jpg",
+        },
+      ],
+      [`Sorcerer ${n}`]: [
+        { id: 671, title: `Philosopher ${n}`, release_date: "2001-11-16" },
+      ],
+    });
+
+    const response = await post([
+      { title: `Heat ${n}`, year: 1995 },
+      { title: `Nowhere ${n}`, year: 2001 },
+      { title: `Sorcerer ${n}`, year: 2001 },
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      results: [
+        {
+          id: "949",
+          title: `Heat ${n}`,
+          year: "1995",
+          releaseDate: "1995-12-15",
+          posterPath: "/heat.jpg",
+        },
+        null,
+        {
+          id: "671",
+          title: `Philosopher ${n}`,
+          year: "2001",
+          releaseDate: "2001-11-16",
+        },
+      ],
+    });
+    const urls = fetchSpy.mock.calls.map(([url]) => new URL(String(url)));
+    expect(
+      urls.map((url) => url.searchParams.get("primary_release_year")),
+    ).toEqual(["1995", "2001", "2001"]);
+  });
+
+  it("caches each film, found or not, across batches and readers", async () => {
+    const n = testCount;
+    tmdbKnows({
+      [`Found ${n}`]: [
+        { id: 5, title: `Found ${n}`, release_date: "2000-01-01" },
+      ],
+    });
+    await post([
+      { title: `Found ${n}`, year: 2000 },
+      { title: `Missing ${n}`, year: 2000 },
+    ]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const again = await post([
+      { title: `FOUND  ${n}`, year: 2000 },
+      { title: `Missing ${n}`, year: 2000 },
+      { title: `New ${n}`, year: 2000 },
+    ]);
+    expect(((await again.json()) as { results: unknown[] }).results).toEqual([
+      expect.objectContaining({ id: "5" }),
+      null,
+      null,
+    ]);
+    // Only the film it hadn't seen.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails the batch rather than report a film it couldn't ask about", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchSpy.mockResolvedValue(Response.json({}, { status: 503 }));
+    const response = await post([{ title: `Flaky ${testCount}`, year: 2001 }]);
     expect(response.status).toBe(502);
   });
 });

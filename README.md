@@ -12,19 +12,11 @@ site.
 
 ## API
 
-One endpoint, `GET /api/tmdb/search`, which calls TMDB's `/3/search/movie`.
-Every request needs a Firebase ID token for the site's project, from an account
-with a verified email: `Authorization: Bearer <token>`.
+Two endpoints, both calling TMDB's `/3/search/movie`. Every request needs a
+Firebase ID token for the site's project, from an account with a verified
+email: `Authorization: Bearer <token>`.
 
-| Param  | Rule                                       |
-| ------ | ------------------------------------------ |
-| `q`    | Required, 1–100 characters after trimming  |
-| `year` | Optional, 4 digits                         |
-| `page` | Optional, 1–5, default 1 (20 films a page) |
-
-It returns `{ page, totalPages, totalResults, results }`, with `totalPages`
-capped at 5. Each film is trimmed to what the site uses, with absent fields
-left out:
+Films come back trimmed to what the site uses, with absent fields left out:
 
 ```json
 {
@@ -38,23 +30,62 @@ left out:
 }
 ```
 
+### `GET /api/tmdb/search`
+
+For the site's film search.
+
+| Param  | Rule                                       |
+| ------ | ------------------------------------------ |
+| `q`    | Required, 1–100 characters after trimming  |
+| `year` | Optional, 4 digits                         |
+| `page` | Optional, 1–5, default 1 (20 films a page) |
+
+Returns `{ page, totalPages, totalResults, results }`, with `totalPages` capped
+at 5. Responses are cached for an hour, keyed on the normalised request (query
+lowercased, whitespace collapsed, params sorted).
+
+### `POST /api/tmdb/match`
+
+For imports: finds the TMDB film for each of up to 15 titles, as Letterboxd
+names them.
+
+```json
+{ "films": [{ "title": "Amélie", "year": 2001 }, { "title": "Heat" }] }
+```
+
+Titles are 1–200 characters; `year` is optional. Returns
+`{ "results": [film | null, …] }` in the order asked. Each film is searched
+with its year as TMDB's `primary_release_year`, and matching is strict: a
+result whose title or original title matches once case, accents and
+punctuation are folded away, or else the only result when a year was given
+(which is how "Harry Potter and the Sorcerer's Stone" finds the UK title). A
+miss is `null`. If any search fails the whole batch is a 502, so a film TMDB
+couldn't be asked about is never reported as missing.
+
+Each film's answer is cached for a week (a day for a miss), keyed on its
+folded title and year, so re-importing a file costs almost nothing. 15 is the
+most a batch can hold on Workers Free, whose 50 subrequests a request include
+cache reads and writes.
+
+### Errors and limits
+
 Requests are checked in order and fail at the first problem:
 
-| Status | Meaning                                          |
-| ------ | ------------------------------------------------ |
-| 404    | Any path but the search                          |
-| 405    | Not `GET`                                        |
-| 400    | Bad params                                       |
-| 401    | Missing, invalid or expired token                |
-| 403    | Email not verified                               |
-| 429    | Over 30 requests a minute per user, or 60 per IP |
-| 502    | TMDB failed or couldn't be reached               |
+| Status | Meaning                                                   |
+| ------ | --------------------------------------------------------- |
+| 404    | Any other path                                            |
+| 405    | The wrong method: search is `GET`, match is `POST`        |
+| 400    | Bad params or body                                        |
+| 401    | Missing, invalid or expired token                         |
+| 403    | Email not verified                                        |
+| 429    | Over the endpoint's per-user limit, or 60 requests per IP |
+| 502    | TMDB failed or couldn't be reached                        |
 
-Responses are cached for an hour and shared between users in the Cache API,
-keyed on the normalised request (query lowercased, whitespace collapsed, params
-sorted). The cache sits after auth and rate limiting, so cached answers still
-count against the limits. Rate limits are per Cloudflare location and
-approximate.
+Each endpoint has its own per-user limit, so an import can't lock a reader out
+of searching: 30 searches a minute, and 13 match batches a minute (about 195
+films). Both share the IP limit. Limits are per Cloudflare location and
+approximate. Cached answers are shared between users, and the cache sits after
+auth and rate limiting, so they still count against the limits.
 
 ## Development
 
