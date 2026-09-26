@@ -224,7 +224,7 @@ describe("search", () => {
 
     const [url, init] = fetchSpy.mock.calls[0] as [URL, RequestInit];
     expect(url.toString()).toBe(
-      `https://api.themoviedb.org/3/search/movie?language=en-GB&region=GB&include_adult=false&query=film+${testCount}&page=1&year=2021`,
+      `https://api.themoviedb.org/3/search/movie?language=en-GB&include_adult=false&query=film+${testCount}&page=1&year=2021`,
     );
     expect(new Headers(init.headers).get("Authorization")).toBe(
       "Bearer test-tmdb-token",

@@ -4,10 +4,13 @@ const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_HOSTNAME = "api.themoviedb.org";
 const UPSTREAM_TIMEOUT_MS = 8000;
 
-/** Sent on every search, whatever was asked. */
+/**
+ * Sent on every search, whatever was asked. No `region`: it swaps each
+ * result's release date for that country's, so Spirited Away (2001) came back
+ * as its 2003 UK release, a year neither the dataset nor Letterboxd uses.
+ */
 const FIXED_PARAMS = {
   language: "en-GB",
-  region: "GB",
   include_adult: "false",
 };
 

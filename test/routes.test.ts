@@ -81,7 +81,6 @@ describe("buildUpstreamUrl", () => {
     expect(url.pathname).toBe("/3/search/movie");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       language: "en-GB",
-      region: "GB",
       include_adult: "false",
       query: "dune",
       page: "2",
