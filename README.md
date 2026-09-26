@@ -72,13 +72,34 @@ After changing `wrangler.jsonc`, run `npm run cf-typegen` and commit
 ## Deployment
 
 `.github/workflows/deploy.yml` lints and tests every push and pull request,
-and deploys on pushes to `main`. One-off setup:
+and deploys on pushes to `main`. The TMDB token is a secret stored on the
+Worker: it persists across deploys and never goes in the repo or CI.
 
-- Repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts edit and Workers
-  Routes edit on the `clusterflick.com` zone) and `CLOUDFLARE_ACCOUNT_ID`.
-- The TMDB token, as a Worker secret: `npx wrangler secret put TMDB_TOKEN`. It
-  persists across deploys and never goes in the repo or CI.
-- The rate limit `namespace_id`s must be unique within the Cloudflare account.
+### First deploy
+
+CI can't create the Worker. `wrangler.jsonc` marks `TMDB_TOKEN` as required,
+so wrangler refuses to deploy a new Worker without it, and
+`wrangler secret put` only works on a Worker that already exists. The first
+deploy is from a machine with the token, which creates the Worker and its
+secret together:
+
+```sh
+cp .dev.vars.example .dev.vars   # add the TMDB read access token
+npx wrangler login
+npx wrangler deploy --secrets-file .dev.vars
+```
+
+Then add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare
+Workers" template, scoped to the account and the `clusterflick.com` zone) and
+`CLOUDFLARE_ACCOUNT_ID`, and CI deploys from then on.
+
+The rate limit `namespace_id`s must be unique within the Cloudflare account.
+
+### Rotating the TMDB token
+
+```sh
+npx wrangler secret put TMDB_TOKEN
+```
 
 ## Attribution
 

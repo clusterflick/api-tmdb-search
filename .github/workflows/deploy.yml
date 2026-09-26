@@ -45,8 +45,8 @@ jobs:
           # No cache on the deploying job: a poisoned one would ship.
           package-manager-cache: false
       - run: npm ci
-      # TMDB_TOKEN is a Worker secret, set once with `wrangler secret put`; it
-      # persists across deploys and never passes through here.
+      # TMDB_TOKEN is stored on the Worker (see the README's first deploy) and
+      # persists across deploys, so it never passes through here.
       - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
