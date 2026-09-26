@@ -67,9 +67,11 @@ batch is a 502, so a film TMDB couldn't be asked about is never reported as
 missing.
 
 Each film's answer is cached for a week (a day for a miss), keyed on its
-folded title and year, so re-importing a file costs almost nothing. 15 is the
-most a batch can hold on Workers Free, whose 50 subrequests a request include
-cache reads and writes.
+folded title and year, so re-importing a file costs almost nothing. The key
+also carries `MATCH_RULES_VERSION`: bump it with any change to how matches are
+picked, or the old rules' answers are served until they expire. 15 is the most
+a batch can hold on Workers Free, whose 50 subrequests a request include cache
+reads and writes.
 
 ### Errors and limits
 

@@ -23,6 +23,12 @@ const CONCURRENCY = 6;
 const FOUND_TTL = 7 * 24 * 60 * 60;
 /** Shorter for a miss, which a new TMDB entry could turn into a match. */
 const MISSING_TTL = 24 * 60 * 60;
+/**
+ * Part of every cached answer's key. Bump it whenever `pickMatch` or the
+ * search it's given changes, so answers the old rules gave — misses above
+ * all — aren't served for up to a week after the new rules deploy.
+ */
+const MATCH_RULES_VERSION = 2;
 
 /** A film named by an import, as Letterboxd names it. */
 export type MatchFilm = { title: string; year?: number };
@@ -153,6 +159,7 @@ export function pickMatch(
 
 function getMatchCacheKey(origin: string, film: MatchFilm) {
   const url = new URL(`${API_PREFIX}/match`, origin);
+  url.searchParams.set("v", String(MATCH_RULES_VERSION));
   url.searchParams.set("title", normaliseTitle(film.title));
   if (film.year !== undefined) url.searchParams.set("year", String(film.year));
   return url.toString();
