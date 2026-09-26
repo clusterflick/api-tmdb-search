@@ -4,10 +4,8 @@ import { MAX_PAGE, type Search } from "./routes";
 export type TmdbQuery = {
   query: string;
   page: number;
-  /** Any release in that year. */
+  /** Any release in that year, festival premieres and re-releases included. */
   year?: string;
-  /** The first release, which is the year Letterboxd and TMDB give a film. */
-  primaryReleaseYear?: number;
 };
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
@@ -69,12 +67,6 @@ export function buildUpstreamUrl(query: TmdbQuery) {
   url.searchParams.set("query", query.query);
   url.searchParams.set("page", String(query.page));
   if (query.year) url.searchParams.set("year", query.year);
-  if (query.primaryReleaseYear) {
-    url.searchParams.set(
-      "primary_release_year",
-      String(query.primaryReleaseYear),
-    );
-  }
   // Belt and braces: the URL is fixed apart from validated params, but
   // nothing should ever leave for another host with our token on it.
   if (url.hostname !== TMDB_HOSTNAME || url.protocol !== "https:") {

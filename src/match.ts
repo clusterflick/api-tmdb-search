@@ -90,6 +90,11 @@ export function normaliseTitle(title: string) {
   );
 }
 
+function releaseYear(result: RawMovie) {
+  const year = result.release_date?.match(/^(\d{4})-/)?.[1];
+  return year ? Number(year) : undefined;
+}
+
 /**
  * The film TMDB's results name, or nothing. Strict, because a wrong film
  * added silently is worse than one the reader has to search for:
@@ -103,6 +108,15 @@ export function normaliseTitle(title: string) {
  *
  * A film with no year gets no such allowance: its lone answer could be any
  * year's.
+ *
+ * The results are every film with any release in the year asked, as
+ * Letterboxd's year is a film's first showing anywhere, festival premieres
+ * included, and TMDB's is its first release after them: Starve Acre is 2023
+ * on Letterboxd, for its London Film Festival premiere, and 2024 on TMDB. So a
+ * result's own year may be later than the one asked, but never earlier —
+ * that's an older film re-released that year. A lone answer under another
+ * name is taken only from the year asked, as the search's reach into later
+ * years is for films Letterboxd dates by a premiere, not a second chance.
  */
 export function pickMatch(
   results: RawMovie[],
@@ -111,14 +125,29 @@ export function pickMatch(
   const wanted = normaliseTitle(film.title);
   // All punctuation ("…", "?") folds to nothing, which would match anything.
   if (!wanted) return undefined;
-  const exact = results.find(
+  const inYear = (result: RawMovie) => {
+    if (film.year === undefined) return true;
+    const year = releaseYear(result);
+    return year !== undefined && year >= film.year;
+  };
+  const exact = results.filter(
     (result) =>
-      (result.title && normaliseTitle(result.title) === wanted) ||
-      (result.original_title &&
-        normaliseTitle(result.original_title) === wanted),
+      inYear(result) &&
+      ((result.title && normaliseTitle(result.title) === wanted) ||
+        (result.original_title &&
+          normaliseTitle(result.original_title) === wanted)),
   );
-  if (exact) return exact;
-  if (film.year !== undefined && results.length === 1) return results[0];
+  // A film first released the year asked beats one premiered then.
+  const match =
+    exact.find((result) => releaseYear(result) === film.year) ?? exact[0];
+  if (match) return match;
+  if (
+    film.year !== undefined &&
+    results.length === 1 &&
+    releaseYear(results[0]) === film.year
+  ) {
+    return results[0];
+  }
   return undefined;
 }
 
@@ -141,7 +170,11 @@ async function matchOne(
   if (cached) return ((await cached.json()) as { film: TmdbMovie | null }).film;
 
   const { results } = await fetchTmdbSearch(
-    { query: film.title, page: 1, primaryReleaseYear: film.year },
+    {
+      query: film.title,
+      page: 1,
+      ...(film.year !== undefined && { year: String(film.year) }),
+    },
     token,
   );
   const match = pickMatch(results, film);

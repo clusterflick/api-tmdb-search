@@ -55,12 +55,16 @@ names them.
 
 Titles are 1–200 characters; `year` is optional. Returns
 `{ "results": [film | null, …] }` in the order asked. Each film is searched
-with its year as TMDB's `primary_release_year`, and matching is strict: a
-result whose title or original title matches once case, accents and
-punctuation are folded away, or else the only result when a year was given
-(which is how "Harry Potter and the Sorcerer's Stone" finds the UK title). A
-miss is `null`. If any search fails the whole batch is a 502, so a film TMDB
-couldn't be asked about is never reported as missing.
+with its year as TMDB's `year`, which takes any release that year, because
+Letterboxd dates a film by its first showing, festival premieres included,
+and TMDB by its first release after them (Starve Acre is 2023 on Letterboxd,
+2024 on TMDB). Matching is strict: a result whose title or original title
+matches once case, accents and punctuation are folded away, dated the year
+given or later, never earlier, which would be a re-release; or else the only
+result, dated the year given (which is how "Harry Potter and the Sorcerer's
+Stone" finds the UK title). A miss is `null`. If any search fails the whole
+batch is a 502, so a film TMDB couldn't be asked about is never reported as
+missing.
 
 Each film's answer is cached for a week (a day for a miss), keyed on its
 folded title and year, so re-importing a file costs almost nothing. 15 is the

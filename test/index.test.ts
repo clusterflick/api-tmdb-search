@@ -384,9 +384,11 @@ describe("match", () => {
       ],
     });
     const urls = fetchSpy.mock.calls.map(([url]) => new URL(String(url)));
-    expect(
-      urls.map((url) => url.searchParams.get("primary_release_year")),
-    ).toEqual(["1995", "2001", "2001"]);
+    expect(urls.map((url) => url.searchParams.get("year"))).toEqual([
+      "1995",
+      "2001",
+      "2001",
+    ]);
   });
 
   it("caches each film, found or not, across batches and readers", async () => {

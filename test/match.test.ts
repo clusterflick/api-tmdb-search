@@ -76,24 +76,30 @@ describe("normaliseTitle", () => {
 });
 
 describe("pickMatch", () => {
-  const film = (id: number, title: string, original = title) => ({
+  const film = (
+    id: number,
+    title: string,
+    year?: number,
+    original = title,
+  ) => ({
     id,
     title,
     original_title: original,
+    ...(year && { release_date: `${year}-06-01` }),
   });
 
   it("takes the first result whose title matches", () => {
     expect(
-      pickMatch([film(1, "Heat Wave"), film(949, "Heat"), film(2, "Heat")], {
-        title: "Heat",
-        year: 1995,
-      })?.id,
+      pickMatch(
+        [film(1, "Heat Wave", 1995), film(949, "Heat", 1995), film(2, "Heat")],
+        { title: "Heat", year: 1995 },
+      )?.id,
     ).toBe(949);
   });
 
   it("matches on the original title", () => {
     expect(
-      pickMatch([film(12, "Spirited Away", "千と千尋の神隠し")], {
+      pickMatch([film(12, "Spirited Away", 2001, "千と千尋の神隠し")], {
         title: "千と千尋の神隠し",
       })?.id,
     ).toBe(12);
@@ -101,7 +107,7 @@ describe("pickMatch", () => {
 
   it("takes a lone result under another title when the year was given", () => {
     expect(
-      pickMatch([film(671, "Harry Potter and the Philosopher's Stone")], {
+      pickMatch([film(671, "Harry Potter and the Philosopher's Stone", 2001)], {
         title: "Harry Potter and the Sorcerer's Stone",
         year: 2001,
       })?.id,
@@ -118,10 +124,52 @@ describe("pickMatch", () => {
 
   it("finds nothing among several results that don't match", () => {
     expect(
-      pickMatch([film(1, "Up in the Air"), film(2, "Upgrade")], {
+      pickMatch([film(1, "Up in the Air", 2009), film(2, "Upgrade", 2018)], {
         title: "Up",
         year: 2009,
       }),
+    ).toBeUndefined();
+  });
+
+  it("takes a film TMDB dates later than a premiere Letterboxd dates it by", () => {
+    expect(
+      pickMatch([film(933090, "Starve Acre", 2024)], {
+        title: "Starve Acre",
+        year: 2023,
+      })?.id,
+    ).toBe(933090);
+  });
+
+  it("prefers a film first released the year asked to one premiered then", () => {
+    expect(
+      pickMatch([film(1, "Heat", 1996), film(949, "Heat", 1995)], {
+        title: "Heat",
+        year: 1995,
+      })?.id,
+    ).toBe(949);
+  });
+
+  it("doesn't take an older film re-released the year asked", () => {
+    expect(
+      pickMatch([film(1, "Nosferatu", 1922)], {
+        title: "Nosferatu",
+        year: 2024,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("doesn't take a lone result under another title from a later year", () => {
+    expect(
+      pickMatch([film(1, "Fast X", 2023)], {
+        title: "The Furious",
+        year: 2022,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("doesn't take a result with no date when the year was given", () => {
+    expect(
+      pickMatch([film(1, "Heat")], { title: "Heat", year: 1995 }),
     ).toBeUndefined();
   });
 

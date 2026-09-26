@@ -95,14 +95,4 @@ describe("buildUpstreamUrl", () => {
       year: "2024",
     });
   });
-
-  it("can filter to a primary release year", () => {
-    const url = buildUpstreamUrl({
-      query: "amélie",
-      page: 1,
-      primaryReleaseYear: 2001,
-    });
-    expect(url.searchParams.get("primary_release_year")).toBe("2001");
-    expect(url.searchParams.has("year")).toBe(false);
-  });
 });
