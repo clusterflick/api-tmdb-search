@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `npm run dev`. TheMovieDB's API Read Access Token
+# (Settings → API), sent as a Bearer token.
+TMDB_TOKEN=
