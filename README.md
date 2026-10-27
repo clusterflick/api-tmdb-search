@@ -15,14 +15,13 @@ showing to their watchlist or seen list.
 It runs on the route `clusterflick.com/api/tmdb/*`, same-origin with the site,
 so the browser needs no CORS. It is not a general TMDB proxy: it answers one
 kind of request, builds every TMDB URL itself, and keeps the TMDB token
-server-side. It only looks films up; lists are written to Firestore by the
-site.
+server-side. It only looks films up; lists are written to Firestore by the site.
 
 ## API
 
 Two endpoints, both calling TMDB's `/3/search/movie`. Every request needs a
-Firebase ID token for the site's project, from an account with a verified
-email: `Authorization: Bearer <token>`.
+Firebase ID token for the site's project, from an account with a verified email:
+`Authorization: Bearer <token>`.
 
 Films come back trimmed to what the site uses, with absent fields left out:
 
@@ -62,23 +61,22 @@ names them.
 ```
 
 Titles are 1–200 characters; `year` is optional. Returns
-`{ "results": [film | null, …] }` in the order asked. Each film is searched
-with its year as TMDB's `year`, which takes any release that year, because
-Letterboxd dates a film by its first showing, festival premieres included,
-and TMDB by its first release after them (Starve Acre is 2023 on Letterboxd,
-2024 on TMDB). Matching is strict: a result whose title or original title
-matches once case, accents and punctuation are folded away, dated the year
-given or later, never earlier, which would be a re-release; or else the only
-result, dated the year given (which is how "Harry Potter and the Sorcerer's
-Stone" finds the UK title). A miss is `null`. If any search fails the whole
-batch is a 502, so a film TMDB couldn't be asked about is never reported as
-missing.
+`{ "results": [film | null, …] }` in the order asked. Each film is searched with
+its year as TMDB's `year`, which takes any release that year, because Letterboxd
+dates a film by its first showing, festival premieres included, and TMDB by its
+first release after them (Starve Acre is 2023 on Letterboxd, 2024 on TMDB).
+Matching is strict: a result whose title or original title matches once case,
+accents and punctuation are folded away, dated the year given or later, never
+earlier, which would be a re-release; or else the only result, dated the year
+given (which is how "Harry Potter and the Sorcerer's Stone" finds the UK title).
+A miss is `null`. If any search fails the whole batch is a 502, so a film TMDB
+couldn't be asked about is never reported as missing.
 
-Each film's answer is cached for a week (a day for a miss), keyed on its
-folded title and year, so re-importing a file costs almost nothing. The key
-also carries `MATCH_RULES_VERSION`: bump it with any change to how matches are
-picked, or the old rules' answers are served until they expire. 15 is the most
-a batch can hold on Workers Free, whose 50 subrequests a request include cache
+Each film's answer is cached for a week (a day for a miss), keyed on its folded
+title and year, so re-importing a file costs almost nothing. The key also
+carries `MATCH_RULES_VERSION`: bump it with any change to how matches are
+picked, or the old rules' answers are served until they expire. 15 is the most a
+batch can hold on Workers Free, whose 50 subrequests a request include cache
 reads and writes.
 
 ### Errors and limits
@@ -116,17 +114,16 @@ After changing `wrangler.jsonc`, run `npm run cf-typegen` and commit
 
 ## Deployment
 
-`.github/workflows/deploy.yml` lints and tests every push and pull request,
-and deploys on pushes to `main`. The TMDB token is a secret stored on the
-Worker: it persists across deploys and never goes in the repo or CI.
+`.github/workflows/deploy.yml` lints and tests every push and pull request, and
+deploys on pushes to `main`. The TMDB token is a secret stored on the Worker: it
+persists across deploys and never goes in the repo or CI.
 
 ### First deploy
 
-CI can't create the Worker. `wrangler.jsonc` marks `TMDB_TOKEN` as required,
-so wrangler refuses to deploy a new Worker without it, and
-`wrangler secret put` only works on a Worker that already exists. The first
-deploy is from a machine with the token, which creates the Worker and its
-secret together:
+CI can't create the Worker. `wrangler.jsonc` marks `TMDB_TOKEN` as required, so
+wrangler refuses to deploy a new Worker without it, and `wrangler secret put`
+only works on a Worker that already exists. The first deploy is from a machine
+with the token, which creates the Worker and its secret together:
 
 ```sh
 cp .dev.vars.example .dev.vars   # add the TMDB read access token
