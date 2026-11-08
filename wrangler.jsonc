@@ -38,6 +38,12 @@
       "namespace_id": "1003",
       "simple": { "limit": 13, "period": 60 },
     },
+    // Details backfills, per uid: 13 batches of 15 films, as for imports.
+    {
+      "name": "DETAILS_LIMIT",
+      "namespace_id": "1004",
+      "simple": { "limit": 13, "period": 60 },
+    },
   ],
   "observability": { "enabled": true },
 }

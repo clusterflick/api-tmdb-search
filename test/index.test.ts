@@ -70,7 +70,12 @@ async function call(
     token?: string;
     method?: string;
     body?: unknown;
-    limits?: { user?: typeof allow; ip?: typeof allow; match?: typeof allow };
+    limits?: {
+      user?: typeof allow;
+      ip?: typeof allow;
+      match?: typeof allow;
+      details?: typeof allow;
+    };
   } = {},
 ) {
   const request = new Request(`https://clusterflick.com${path}`, {
@@ -86,6 +91,7 @@ async function call(
     USER_LIMIT: limits.user ?? allow,
     IP_LIMIT: limits.ip ?? allow,
     MATCH_LIMIT: limits.match ?? allow,
+    DETAILS_LIMIT: limits.details ?? allow,
   } as unknown as Env;
   const ctx = createExecutionContext();
   const response = await handleRequest(request, testEnv, ctx, TEST_KEYS);
@@ -422,6 +428,118 @@ describe("match", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fetchSpy.mockResolvedValue(Response.json({}, { status: 503 }));
     const response = await post([{ title: `Flaky ${testCount}`, year: 2001 }]);
+    expect(response.status).toBe(502);
+  });
+});
+
+describe("details", () => {
+  /** An id no other test uses, so cached details don't leak between tests. */
+  const uniqueId = (offset = 0) => String(900000 + testCount * 10 + offset);
+
+  /** TMDB's details for each id, as `fetch` would return them; else a 404. */
+  function tmdbKnows(byId: Record<string, object>) {
+    fetchSpy.mockImplementation(async (input) => {
+      const id = new URL(String(input)).pathname.split("/").pop() ?? "";
+      return byId[id]
+        ? Response.json(byId[id])
+        : Response.json({ status_code: 34 }, { status: 404 });
+    });
+  }
+
+  const post = async (ids: unknown[], limits = {}) =>
+    call("/api/tmdb/details", {
+      method: "POST",
+      body: { ids },
+      token: await signToken(),
+      limits,
+    });
+
+  it("405s a GET", async () => {
+    const response = await call("/api/tmdb/details");
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("POST");
+  });
+
+  it("400s a bad body before checking the token", async () => {
+    const response = await call("/api/tmdb/details", {
+      method: "POST",
+      body: { ids: ["../search"] },
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("401s without a token", async () => {
+    const response = await call("/api/tmdb/details", {
+      method: "POST",
+      body: { ids: [uniqueId()] },
+    });
+    expect(response.status).toBe(401);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("has its own per-reader limit, apart from the others", async () => {
+    tmdbKnows({});
+    const ids = [uniqueId()];
+    expect((await post(ids, { details: deny })).status).toBe(429);
+    expect((await post(ids, { user: deny, match: deny })).status).toBe(200);
+  });
+
+  it("returns each film's details, or null, in the order asked", async () => {
+    const [heat, gone] = [uniqueId(0), uniqueId(1)];
+    tmdbKnows({
+      [heat]: {
+        id: Number(heat),
+        genres: [{ id: 80, name: "Crime" }],
+        runtime: 170,
+        original_language: "en",
+        credits: {
+          cast: [{ id: 1158, name: "Al Pacino", order: 0 }],
+          crew: [{ id: 638, name: "Michael Mann", job: "Director" }],
+        },
+      },
+    });
+
+    const response = await post([heat, gone]);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      results: [
+        {
+          id: heat,
+          genres: ["80"],
+          directors: [{ id: "638", name: "Michael Mann" }],
+          cast: [{ id: "1158", name: "Al Pacino" }],
+          runtime: 170,
+          language: "en",
+        },
+        null,
+      ],
+    });
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.pathname).toBe(`/3/movie/${heat}`);
+    expect(url.searchParams.get("append_to_response")).toBe("credits");
+  });
+
+  it("caches each film, found or not", async () => {
+    const [found, missing] = [uniqueId(0), uniqueId(1)];
+    tmdbKnows({ [found]: { id: Number(found) } });
+    await post([found, missing]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const again = await post([found, missing, uniqueId(2)]);
+    expect(((await again.json()) as { results: unknown[] }).results).toEqual([
+      expect.objectContaining({ id: found }),
+      null,
+      null,
+    ]);
+    // Only the film it hadn't seen.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails the batch rather than report a film it couldn't ask about", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchSpy.mockResolvedValue(Response.json({}, { status: 503 }));
+    const response = await post([uniqueId()]);
     expect(response.status).toBe(502);
   });
 });

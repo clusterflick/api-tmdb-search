@@ -115,6 +115,33 @@ export async function fetchTmdbSearch(
   return response.json();
 }
 
+/**
+ * A TMDB resource by path, in English, or null for a 404. The path is built
+ * by the caller from validated input (`movie/<digits>`), never passed through
+ * from a request. Throws on anything else but a 200.
+ */
+export async function fetchTmdbJson<T>(
+  path: string,
+  token: string,
+  params: Record<string, string> = {},
+): Promise<T | null> {
+  const url = new URL(`${TMDB_BASE}/${path}`);
+  url.searchParams.set("language", FIXED_PARAMS.language);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  if (url.hostname !== TMDB_HOSTNAME || url.protocol !== "https:") {
+    throw new Error(`Refusing to fetch ${url.origin}`);
+  }
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`TMDB responded ${response.status}`);
+  return response.json();
+}
+
 export async function fetchFromTmdb(
   search: Search,
   token: string,

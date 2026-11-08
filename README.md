@@ -14,12 +14,13 @@ showing to their watchlist or seen list.
 
 It runs on the route `clusterflick.com/api/tmdb/*`, same-origin with the site,
 so the browser needs no CORS. It is not a general TMDB proxy: it answers one
-kind of request, builds every TMDB URL itself, and keeps the TMDB token
+few kinds of request, builds every TMDB URL itself, and keeps the TMDB token
 server-side. It only looks films up; lists are written to Firestore by the site.
 
 ## API
 
-Two endpoints, both calling TMDB's `/3/search/movie`. Every request needs a
+Three endpoints: search and match call TMDB's `/3/search/movie`, details its
+`/3/movie/{id}`. Every request needs a
 Firebase ID token for the site's project, from an account with a verified email:
 `Authorization: Bearer <token>`.
 
@@ -79,6 +80,39 @@ picked, or the old rules' answers are served until they expire. 15 is the most a
 batch can hold on Workers Free, whose 50 subrequests a request include cache
 reads and writes.
 
+### `POST /api/tmdb/details`
+
+For the site's list stats and filters: genres, directors and top-billed cast for
+up to 15 films, by TMDB id.
+
+```json
+{ "ids": ["949", "603"] }
+```
+
+Ids are digits only, since each goes into a TMDB path. Returns
+`{ "results": [details | null, …] }` in the order asked, `null` where TMDB has
+no such film:
+
+```json
+{
+  "id": "949",
+  "genres": ["80", "18", "28", "53"],
+  "directors": [{ "id": "638", "name": "Michael Mann" }],
+  "cast": [{ "id": "1158", "name": "Al Pacino" }],
+  "runtime": 170,
+  "language": "en"
+}
+```
+
+Genre and person ids are TMDB's, which the site's dataset uses too. Directors
+are ordered by credit id and cast by billing, cut to the top 5, as the site's
+pipeline orders them, so a film looked up here reads the same as one from the
+dataset. `runtime` is in minutes; it and `language` are left out when TMDB has
+none. If any lookup fails the whole batch is a 502.
+
+Each film is cached for 30 days (a day for a miss), keyed on its id and
+`DETAILS_VERSION`: bump that with any change to what comes back.
+
 ### Errors and limits
 
 Requests are checked in order and fail at the first problem:
@@ -86,18 +120,19 @@ Requests are checked in order and fail at the first problem:
 | Status | Meaning                                                   |
 | ------ | --------------------------------------------------------- |
 | 404    | Any other path                                            |
-| 405    | The wrong method: search is `GET`, match is `POST`        |
+| 405    | The wrong method: search is `GET`, the others `POST`      |
 | 400    | Bad params or body                                        |
 | 401    | Missing, invalid or expired token                         |
 | 403    | Email not verified                                        |
 | 429    | Over the endpoint's per-user limit, or 60 requests per IP |
 | 502    | TMDB failed or couldn't be reached                        |
 
-Each endpoint has its own per-user limit, so an import can't lock a reader out
-of searching: 30 searches a minute, and 13 match batches a minute (about 195
-films). Both share the IP limit. Limits are per Cloudflare location and
-approximate. Cached answers are shared between users, and the cache sits after
-auth and rate limiting, so they still count against the limits.
+Each endpoint has its own per-user limit, so an import or a details backfill
+can't lock a reader out of searching: 30 searches a minute, and 13 match or
+details batches a minute (about 195 films) each. All share the IP limit.
+Limits are per Cloudflare location and approximate. Cached answers are shared
+between users, and the cache sits after auth and rate limiting, so they still
+count against the limits.
 
 ## Development
 
