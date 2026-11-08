@@ -12,6 +12,7 @@ describe("matchEndpoint", () => {
     "/api/tmdb/",
     "/api/tmdb/search/",
     "/api/tmdb/match/",
+    "/api/tmdb/details/",
     "/api/tmdb/movie/603",
     "/api/tmdb/movie/603/recommendations",
     "/api/tmdb/tv/1399",
@@ -25,6 +26,7 @@ describe("matchEndpoint", () => {
     ["/api/tmdb/search", "search"],
     ["/api/tmdb/search?q=dune", "search"],
     ["/api/tmdb/match", "match"],
+    ["/api/tmdb/details", "details"],
   ])("finds %s", (path, endpoint) => {
     expect(matchEndpoint(new URL(path, ORIGIN))).toBe(endpoint);
   });

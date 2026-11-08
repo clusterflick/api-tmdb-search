@@ -5,6 +5,7 @@ import {
   getBearerToken,
   verifyFirebaseToken,
 } from "./auth";
+import { getFilmDetails, parseDetailsBody } from "./details";
 import { matchFilms, parseMatchBody, type MatchFilm } from "./match";
 import {
   ENDPOINT_METHODS,
@@ -36,7 +37,8 @@ function tmdbUnavailable(e: unknown) {
 
 type ParsedRequest =
   | { endpoint: "search"; search: Search }
-  | { endpoint: "match"; films: MatchFilm[] };
+  | { endpoint: "match"; films: MatchFilm[] }
+  | { endpoint: "details"; ids: string[] };
 
 /**
  * Every step fails fast, in this order: route, method, input, token, rate
@@ -62,10 +64,14 @@ export async function handleRequest(
     const search = parseSearch(url.searchParams);
     if (!search.ok) return error(search.error, search.status);
     parsed = { endpoint, search: search.value };
-  } else {
+  } else if (endpoint === "match") {
     const films = await parseMatchBody(request);
     if (!films.ok) return error(films.error, films.status);
     parsed = { endpoint, films: films.value };
+  } else {
+    const ids = await parseDetailsBody(request);
+    if (!ids.ok) return error(ids.error, ids.status);
+    parsed = { endpoint, ids: ids.value };
   }
 
   const token = getBearerToken(request);
@@ -78,9 +84,13 @@ export async function handleRequest(
     throw e;
   }
 
-  // Search and import each have their own per-reader limit, so a big import
-  // can't lock a reader out of searching or the other way round.
-  const userLimit = endpoint === "search" ? env.USER_LIMIT : env.MATCH_LIMIT;
+  // Each endpoint has its own per-reader limit, so a big import or details
+  // backfill can't lock a reader out of searching, or out of each other.
+  const userLimit = {
+    search: env.USER_LIMIT,
+    match: env.MATCH_LIMIT,
+    details: env.DETAILS_LIMIT,
+  }[endpoint];
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const [userAllowed, ipAllowed] = await Promise.all([
     userLimit.limit({ key: uid }),
@@ -90,9 +100,14 @@ export async function handleRequest(
     return error("Too many requests", 429, { "Retry-After": "60" });
   }
 
-  return parsed.endpoint === "search"
-    ? handleSearch(parsed.search, url, env, ctx)
-    : handleMatch(parsed.films, url, env, ctx);
+  switch (parsed.endpoint) {
+    case "search":
+      return handleSearch(parsed.search, url, env, ctx);
+    case "match":
+      return handleMatch(parsed.films, url, env, ctx);
+    case "details":
+      return handleDetails(parsed.ids, url, env, ctx);
+  }
 }
 
 async function handleSearch(
@@ -138,6 +153,21 @@ async function handleMatch(
   try {
     const body = await matchFilms(films, env.TMDB_TOKEN, url.origin, ctx);
     // Each film is cached here, and an import doesn't ask twice.
+    return json(body, 200, { "Cache-Control": "no-store" });
+  } catch (e) {
+    return tmdbUnavailable(e);
+  }
+}
+
+async function handleDetails(
+  ids: string[],
+  url: URL,
+  env: Env,
+  ctx: ExecutionContext,
+) {
+  try {
+    const body = await getFilmDetails(ids, env.TMDB_TOKEN, url.origin, ctx);
+    // Each film is cached here, and a backfill asks for each film once.
     return json(body, 200, { "Cache-Control": "no-store" });
   } catch (e) {
     return tmdbUnavailable(e);

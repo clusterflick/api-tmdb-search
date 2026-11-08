@@ -1,17 +1,19 @@
 /**
- * The Worker's own API: a search, and a batch match for imports. Their input
+ * The Worker's own API: a search, a batch match for imports, and a batch of
+ * film details for a reader's list stats. Their input
  * is validated and translated into TMDB requests we build ourselves; nothing
  * from the request's path or query string is passed through to TMDB.
  */
 
 export const API_PREFIX = "/api/tmdb";
 
-export type Endpoint = "search" | "match";
+export type Endpoint = "search" | "match" | "details";
 
 /** Each endpoint answers one method; anything else is a 405. */
 export const ENDPOINT_METHODS: Record<Endpoint, string> = {
   search: "GET",
   match: "POST",
+  details: "POST",
 };
 
 export type Search = { query: string; year?: string; page: number };
@@ -30,6 +32,7 @@ export function badRequest(error: string) {
 export function matchEndpoint(url: URL): Endpoint | null {
   if (url.pathname === `${API_PREFIX}/search`) return "search";
   if (url.pathname === `${API_PREFIX}/match`) return "match";
+  if (url.pathname === `${API_PREFIX}/details`) return "details";
   return null;
 }
 
