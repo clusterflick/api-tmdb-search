@@ -70,11 +70,16 @@ Matching is strict: a result whose title or original title matches once case,
 accents and punctuation are folded away, dated the year given or later, never
 earlier, which would be a re-release; or else the only result, dated the year
 given (which is how "Harry Potter and the Sorcerer's Stone" finds the UK title).
+A film may also carry `imdbId` (`tt` and digits), as an IMDb export names it.
+That film is looked up with TMDB's `/3/find` instead, exactly, and its title
+and year aren't consulted. Only films are kept, so a series' id finds nothing.
+A miss by id isn't searched for by title, as that second call per film would
+take a batch past its subrequests; the site asks again by title for those.
 A miss is `null`. If any search fails the whole batch is a 502, so a film TMDB
 couldn't be asked about is never reported as missing.
 
 Each film's answer is cached for a week (a day for a miss), keyed on its folded
-title and year, so re-importing a file costs almost nothing. The key also
+title and year (or its IMDb id), so re-importing a file costs almost nothing. The key also
 carries `MATCH_RULES_VERSION`: bump it with any change to how matches are
 picked, or the old rules' answers are served until they expire. 15 is the most a
 batch can hold on Workers Free, whose 50 subrequests a request include cache

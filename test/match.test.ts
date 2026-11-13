@@ -32,6 +32,17 @@ describe("parseMatchBody", () => {
     });
   });
 
+  it("keeps an IMDb id beside the title", async () => {
+    expect(
+      await parseMatchBody(
+        post({ films: [{ title: "Heat", year: 1995, imdbId: "tt0113277" }] }),
+      ),
+    ).toEqual({
+      ok: true,
+      value: [{ title: "Heat", year: 1995, imdbId: "tt0113277" }],
+    });
+  });
+
   it.each([
     ["not JSON", "films"],
     ["no films", {}],
@@ -47,6 +58,14 @@ describe("parseMatchBody", () => {
     ["a year as text", { films: [{ title: "Heat", year: "1995" }] }],
     ["a fractional year", { films: [{ title: "Heat", year: 1995.5 }] }],
     ["an impossible year", { films: [{ title: "Heat", year: 95 }] }],
+    [
+      "an IMDb id that isn't one",
+      { films: [{ title: "Heat", imdbId: "nm0000134" }] },
+    ],
+    [
+      "an IMDb id that isn't text",
+      { films: [{ title: "Heat", imdbId: 113277 }] },
+    ],
     ["an oversized body", { films: [{ title: "x" }], pad: "a".repeat(17000) }],
   ])("rejects %s", async (_, body) => {
     expect(await parseMatchBody(post(body))).toMatchObject({
