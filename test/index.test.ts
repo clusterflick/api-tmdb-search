@@ -397,6 +397,45 @@ describe("match", () => {
     ]);
   });
 
+  it("finds a film by its IMDb id, without searching its title", async () => {
+    const n = testCount;
+    const imdbId = `tt${9000000 + n}`;
+    fetchSpy.mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === `/3/find/${imdbId}`) {
+        return Response.json({
+          movie_results: [
+            { id: 949, title: "Heat", release_date: "1995-12-15" },
+          ],
+          tv_results: [],
+        });
+      }
+      return Response.json({ movie_results: [], tv_results: [] });
+    });
+
+    const response = await post([
+      { title: `Not its title ${n}`, year: 1990, imdbId },
+      { title: `A series ${n}`, imdbId: `tt${8000000 + n}` },
+    ]);
+
+    expect(await response.json()).toEqual({
+      results: [
+        {
+          id: "949",
+          title: "Heat",
+          year: "1995",
+          releaseDate: "1995-12-15",
+        },
+        null,
+      ],
+    });
+    const urls = fetchSpy.mock.calls.map(([url]) => new URL(String(url)));
+    expect(urls.map((url) => url.pathname).sort()).toEqual(
+      [`/3/find/${imdbId}`, `/3/find/tt${8000000 + n}`].sort(),
+    );
+    expect(urls[0].searchParams.get("external_source")).toBe("imdb_id");
+  });
+
   it("caches each film, found or not, across batches and readers", async () => {
     const n = testCount;
     tmdbKnows({

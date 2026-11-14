@@ -1,5 +1,6 @@
 import { API_PREFIX, badRequest, type Parsed } from "./routes";
 import {
+  fetchTmdbJson,
   fetchTmdbSearch,
   trimMovie,
   type RawMovie,
@@ -30,8 +31,14 @@ const MISSING_TTL = 24 * 60 * 60;
  */
 const MATCH_RULES_VERSION = 2;
 
-/** A film named by an import, as Letterboxd names it. */
-export type MatchFilm = { title: string; year?: number };
+/**
+ * A film named by an import: a title and year, as Letterboxd names it, and
+ * IMDb's id when the file has one, as an IMDb export does.
+ */
+export type MatchFilm = { title: string; year?: number; imdbId?: string };
+
+/** An IMDb title id: `tt` and digits. */
+const IMDB_ID = /^tt\d{1,12}$/;
 
 export type MatchResponse = { results: (TmdbMovie | null)[] };
 
@@ -74,7 +81,18 @@ export async function parseMatchBody(
     ) {
       return badRequest("each year must be a whole year");
     }
-    parsed.push({ title, ...(year !== undefined && { year }) });
+    const imdbId = film.imdbId;
+    if (
+      imdbId !== undefined &&
+      !(typeof imdbId === "string" && IMDB_ID.test(imdbId))
+    ) {
+      return badRequest("each imdbId must be tt and digits");
+    }
+    parsed.push({
+      title,
+      ...(year !== undefined && { year }),
+      ...(imdbId !== undefined && { imdbId }),
+    });
   }
   return { ok: true, value: parsed };
 }
@@ -160,6 +178,11 @@ export function pickMatch(
 function getMatchCacheKey(origin: string, film: MatchFilm) {
   const url = new URL(`${API_PREFIX}/match`, origin);
   url.searchParams.set("v", String(MATCH_RULES_VERSION));
+  // An id names one film whatever the title says, so it's the whole key.
+  if (film.imdbId) {
+    url.searchParams.set("imdb", film.imdbId);
+    return url.toString();
+  }
   url.searchParams.set("title", normaliseTitle(film.title));
   if (film.year !== undefined) url.searchParams.set("year", String(film.year));
   return url.toString();
@@ -176,15 +199,21 @@ async function matchOne(
   const cached = await cache.match(cacheKey);
   if (cached) return ((await cached.json()) as { film: TmdbMovie | null }).film;
 
-  const { results } = await fetchTmdbSearch(
-    {
-      query: film.title,
-      page: 1,
-      ...(film.year !== undefined && { year: String(film.year) }),
-    },
-    token,
-  );
-  const match = pickMatch(results, film);
+  const match = film.imdbId
+    ? await findByImdbId(film.imdbId, token)
+    : pickMatch(
+        (
+          await fetchTmdbSearch(
+            {
+              query: film.title,
+              page: 1,
+              ...(film.year !== undefined && { year: String(film.year) }),
+            },
+            token,
+          )
+        ).results,
+        film,
+      );
   const result = match ? trimMovie(match) : null;
   const ttl = result ? FOUND_TTL : MISSING_TTL;
   ctx.waitUntil(
@@ -197,6 +226,25 @@ async function matchOne(
     ),
   );
   return result;
+}
+
+/**
+ * The film TMDB links to an IMDb id, or nothing. Exact, so the title and year
+ * aren't consulted. A miss isn't searched for by title here: that would be a
+ * second TMDB call per film, which a batch of 15 can't afford within its 50
+ * subrequests, so the client asks again by title for the films this misses.
+ * An id for a series or an episode finds nothing, as only films are kept.
+ */
+async function findByImdbId(
+  imdbId: string,
+  token: string,
+): Promise<RawMovie | undefined> {
+  const found = await fetchTmdbJson<{ movie_results?: RawMovie[] }>(
+    `find/${imdbId}`,
+    token,
+    { external_source: "imdb_id" },
+  );
+  return found?.movie_results?.[0];
 }
 
 /**

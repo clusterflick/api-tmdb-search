@@ -117,8 +117,8 @@ export async function fetchTmdbSearch(
 
 /**
  * A TMDB resource by path, in English, or null for a 404. The path is built
- * by the caller from validated input (`movie/<digits>`), never passed through
- * from a request. Throws on anything else but a 200.
+ * by the caller from validated input (`movie/<digits>`, `find/tt<digits>`),
+ * never passed through from a request. Throws on anything else but a 200.
  */
 export async function fetchTmdbJson<T>(
   path: string,
