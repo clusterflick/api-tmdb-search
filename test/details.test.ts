@@ -20,6 +20,11 @@ describe("parseDetailsBody", () => {
     });
   });
 
+  it("accepts a full batch of the longest ids", async () => {
+    const ids = Array.from({ length: MAX_DETAILS_BATCH }, () => "1234567890");
+    expect(await parseDetailsBody(post({ ids }))).toMatchObject({ ok: true });
+  });
+
   it.each([
     ["no ids", {}],
     ["an empty list", { ids: [] }],

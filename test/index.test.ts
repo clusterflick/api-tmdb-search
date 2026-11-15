@@ -75,6 +75,7 @@ async function call(
       ip?: typeof allow;
       match?: typeof allow;
       details?: typeof allow;
+      tmdb?: typeof allow;
     };
   } = {},
 ) {
@@ -92,6 +93,7 @@ async function call(
     IP_LIMIT: limits.ip ?? allow,
     MATCH_LIMIT: limits.match ?? allow,
     DETAILS_LIMIT: limits.details ?? allow,
+    TMDB_LIMIT: limits.tmdb ?? allow,
   } as unknown as Env;
   const ctx = createExecutionContext();
   const response = await handleRequest(request, testEnv, ctx, TEST_KEYS);
@@ -182,6 +184,7 @@ describe("rate limits", () => {
   it.each([
     ["user", { user: deny }],
     ["IP", { ip: deny }],
+    ["shared TMDB", { tmdb: deny }],
   ])("429s when the %s limit is hit", async (_, limits) => {
     const response = await call(`/api/tmdb/search?q=${uniqueQuery()}`, {
       token: await signToken(),
@@ -192,16 +195,18 @@ describe("rate limits", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("keys the limits by uid and IP", async () => {
+  it("keys the limits by uid, IP and one shared key", async () => {
     const user = { limit: vi.fn(allow.limit) };
     const ip = { limit: vi.fn(allow.limit) };
+    const tmdb = { limit: vi.fn(allow.limit) };
     respondWith(SEARCH_RESPONSE);
     await call(`/api/tmdb/search?q=${uniqueQuery()}`, {
       token: await signToken({ sub: "uid-42" }),
-      limits: { user, ip },
+      limits: { user, ip, tmdb },
     });
-    expect(user.limit).toHaveBeenCalledWith({ key: "uid-42" });
+    expect(user.limit).toHaveBeenCalledWith({ key: "uid-42", delta: 1 });
     expect(ip.limit).toHaveBeenCalledWith({ key: "203.0.113.1" });
+    expect(tmdb.limit).toHaveBeenCalledWith({ key: "tmdb", delta: 1 });
   });
 });
 
@@ -345,6 +350,20 @@ describe("match", () => {
     const film = [{ title: `Limited ${testCount}`, year: 2001 }];
     expect((await post(film, { match: deny })).status).toBe(429);
     expect((await post(film, { user: deny })).status).toBe(200);
+  });
+
+  it("charges the limits a lookup per film, not per batch", async () => {
+    tmdbKnows({});
+    const match = { limit: vi.fn(allow.limit) };
+    const ip = { limit: vi.fn(allow.limit) };
+    const tmdb = { limit: vi.fn(allow.limit) };
+    const films = [0, 1, 2].map((n) => ({
+      title: `Charged ${testCount} ${n}`,
+    }));
+    expect((await post(films, { match, ip, tmdb })).status).toBe(200);
+    expect(match.limit).toHaveBeenCalledWith({ key: "user-1", delta: 3 });
+    expect(ip.limit).toHaveBeenCalledWith({ key: "203.0.113.1" });
+    expect(tmdb.limit).toHaveBeenCalledWith({ key: "tmdb", delta: 3 });
   });
 
   it("returns each film's match, or null, in the order asked", async () => {
@@ -521,6 +540,16 @@ describe("details", () => {
     const ids = [uniqueId()];
     expect((await post(ids, { details: deny })).status).toBe(429);
     expect((await post(ids, { user: deny, match: deny })).status).toBe(200);
+  });
+
+  it("charges the limits a lookup per film, not per batch", async () => {
+    tmdbKnows({});
+    const details = { limit: vi.fn(allow.limit) };
+    const tmdb = { limit: vi.fn(allow.limit) };
+    const ids = [uniqueId(0), uniqueId(1)];
+    expect((await post(ids, { details, tmdb })).status).toBe(200);
+    expect(details.limit).toHaveBeenCalledWith({ key: "user-1", delta: 2 });
+    expect(tmdb.limit).toHaveBeenCalledWith({ key: "tmdb", delta: 2 });
   });
 
   it("returns each film's details, or null, in the order asked", async () => {

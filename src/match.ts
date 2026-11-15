@@ -8,14 +8,17 @@ import {
 } from "./tmdb";
 
 /**
- * Films per call. On Workers Free a request gets 50 subrequests, and cache
- * reads and writes count: a batch of 15 is 15 cache reads, up to 15 TMDB
- * searches and 15 cache writes, plus one fetch of Google's signing keys.
+ * Films per call. Subrequests no longer bind (Workers Paid allows 10,000, and
+ * a batch of 100 is 100 cache reads, up to 100 TMDB calls and 100 cache
+ * writes); the per-reader limit, charged per film, sets the pace. 100 keeps
+ * the auth check and request overhead amortised while an import's progress
+ * still moves every few seconds, and a failed batch retries little work.
  */
-export const MAX_BATCH = 15;
+export const MAX_BATCH = 100;
 
 const MAX_TITLE_LENGTH = 200;
-const MAX_BODY_BYTES = 16 * 1024;
+/** Room for a full batch of the longest titles, with a year and IMDb id. */
+const MAX_BODY_BYTES = 64 * 1024;
 
 /** How many TMDB searches run at once; a Worker gets six connections. */
 const CONCURRENCY = 6;
@@ -43,7 +46,7 @@ const IMDB_ID = /^tt\d{1,12}$/;
 export type MatchResponse = { results: (TmdbMovie | null)[] };
 
 /**
- * `{ "films": [{ "title": "…", "year": 2001 }, …] }`, 1–15 of them. Letterboxd
+ * `{ "films": [{ "title": "…", "year": 2001 }, …] }`, 1–100 of them. Letterboxd
  * gives every film a year; a file from elsewhere might not.
  */
 export async function parseMatchBody(
@@ -231,8 +234,8 @@ async function matchOne(
 /**
  * The film TMDB links to an IMDb id, or nothing. Exact, so the title and year
  * aren't consulted. A miss isn't searched for by title here: that would be a
- * second TMDB call per film, which a batch of 15 can't afford within its 50
- * subrequests, so the client asks again by title for the films this misses.
+ * second TMDB call for a film charged one lookup against the limits, so the
+ * client asks again by title for the films this misses.
  * An id for a series or an episode finds nothing, as only films are kept.
  */
 async function findByImdbId(

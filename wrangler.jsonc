@@ -18,9 +18,11 @@
   },
   // Set with `wrangler secret put TMDB_TOKEN`, locally in `.dev.vars`.
   "secrets": { "required": ["TMDB_TOKEN"] },
-  // A request must pass its endpoint's per-uid limit and the IP one.
-  // Per-location and approximate: they deter abuse rather than
-  // enforce a quota. Periods can only be 10 or 60 seconds.
+  // A request must pass its endpoint's per-uid limit, the IP one and the
+  // shared TMDB one. Per-location and approximate: they deter abuse rather
+  // than enforce a quota. Periods can only be 10 or 60 seconds. A call is
+  // refused only once a count is already at its limit, so a batch can carry
+  // a count past it by up to its own size.
   "ratelimits": [
     {
       "name": "USER_LIMIT",
@@ -32,17 +34,26 @@
       "namespace_id": "1002",
       "simple": { "limit": 60, "period": 60 },
     },
-    // Imports, per uid: 13 batches of 15 films is ~195 films a minute.
+    // Imports, per uid, counted in films rather than requests, so a bigger
+    // batch can't stretch it: 1,200 a minute is 20 TMDB lookups a second.
     {
       "name": "MATCH_LIMIT",
       "namespace_id": "1003",
-      "simple": { "limit": 13, "period": 60 },
+      "simple": { "limit": 1200, "period": 60 },
     },
-    // Details backfills, per uid: 13 batches of 15 films, as for imports.
+    // Details backfills, per uid, counted in films as for imports.
     {
       "name": "DETAILS_LIMIT",
       "namespace_id": "1004",
-      "simple": { "limit": 13, "period": 60 },
+      "simple": { "limit": 1200, "period": 60 },
+    },
+    // Every reader's lookups together, on one key, to stay under TMDB's
+    // ~40 requests a second: 2,000 a minute is ~33 a second. Each film
+    // asked counts, cached or not, so the real TMDB load is lower.
+    {
+      "name": "TMDB_LIMIT",
+      "namespace_id": "1005",
+      "simple": { "limit": 2000, "period": 60 },
     },
   ],
   "observability": { "enabled": true },

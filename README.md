@@ -54,7 +54,7 @@ lowercased, whitespace collapsed, params sorted).
 
 ### `POST /api/tmdb/match`
 
-For imports: finds the TMDB film for each of up to 15 titles, as Letterboxd
+For imports: finds the TMDB film for each of up to 100 titles, as Letterboxd
 names them.
 
 ```json
@@ -73,22 +73,20 @@ given (which is how "Harry Potter and the Sorcerer's Stone" finds the UK title).
 A film may also carry `imdbId` (`tt` and digits), as an IMDb export names it.
 That film is looked up with TMDB's `/3/find` instead, exactly, and its title
 and year aren't consulted. Only films are kept, so a series' id finds nothing.
-A miss by id isn't searched for by title, as that second call per film would
-take a batch past its subrequests; the site asks again by title for those.
+A miss by id isn't searched for by title, as that would be a second TMDB call
+for a film charged one lookup; the site asks again by title for those.
 A miss is `null`. If any search fails the whole batch is a 502, so a film TMDB
 couldn't be asked about is never reported as missing.
 
 Each film's answer is cached for a week (a day for a miss), keyed on its folded
 title and year (or its IMDb id), so re-importing a file costs almost nothing. The key also
 carries `MATCH_RULES_VERSION`: bump it with any change to how matches are
-picked, or the old rules' answers are served until they expire. 15 is the most a
-batch can hold on Workers Free, whose 50 subrequests a request include cache
-reads and writes.
+picked, or the old rules' answers are served until they expire.
 
 ### `POST /api/tmdb/details`
 
 For the site's list stats and filters: genres, directors and top-billed cast for
-up to 15 films, by TMDB id.
+up to 100 films, by TMDB id.
 
 ```json
 { "ids": ["949", "603"] }
@@ -122,20 +120,25 @@ Each film is cached for 30 days (a day for a miss), keyed on its id and
 
 Requests are checked in order and fail at the first problem:
 
-| Status | Meaning                                                   |
-| ------ | --------------------------------------------------------- |
-| 404    | Any other path                                            |
-| 405    | The wrong method: search is `GET`, the others `POST`      |
-| 400    | Bad params or body                                        |
-| 401    | Missing, invalid or expired token                         |
-| 403    | Email not verified                                        |
-| 429    | Over the endpoint's per-user limit, or 60 requests per IP |
-| 502    | TMDB failed or couldn't be reached                        |
+| Status | Meaning                                              |
+| ------ | ---------------------------------------------------- |
+| 404    | Any other path                                       |
+| 405    | The wrong method: search is `GET`, the others `POST` |
+| 400    | Bad params or body                                   |
+| 401    | Missing, invalid or expired token                    |
+| 403    | Email not verified                                   |
+| 429    | Over a per-user, per-IP or shared TMDB limit         |
+| 502    | TMDB failed or couldn't be reached                   |
 
 Each endpoint has its own per-user limit, so an import or a details backfill
-can't lock a reader out of searching: 30 searches a minute, and 13 match or
-details batches a minute (about 195 films) each. All share the IP limit.
-Limits are per Cloudflare location and approximate. Cached answers are shared
+can't lock a reader out of searching: 30 searches a minute, and 1,200 films a
+minute each for match and details. Batches are charged per film, not per
+request, so their size can't be used to get round a limit. Every request also
+counts against 60 requests a minute per IP, and every film or search against a
+shared 2,000 a minute, which keeps all readers together under TMDB's ~40
+requests a second. Limits are per Cloudflare location and approximate, and a
+request is refused only once a count is already over, so a batch can carry it
+past by up to its own size. Cached answers are shared
 between users, and the cache sits after auth and rate limiting, so they still
 count against the limits.
 

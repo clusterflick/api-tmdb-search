@@ -2,11 +2,10 @@ import { API_PREFIX, badRequest, type Parsed } from "./routes";
 import { fetchTmdbJson } from "./tmdb";
 
 /**
- * Films per call. On Workers Free a request gets 50 subrequests, and cache
- * reads and writes count: a batch of 15 is 15 cache reads, up to 15 TMDB
- * lookups and 15 cache writes, plus one fetch of Google's signing keys.
+ * Films per call, as for a match: subrequests no longer bind on Workers Paid,
+ * and the per-reader limit, charged per film, sets the pace.
  */
-export const MAX_DETAILS_BATCH = 15;
+export const MAX_DETAILS_BATCH = 100;
 
 /**
  * Top-billed cast returned per film. The site keeps this many for a reader's
@@ -67,7 +66,7 @@ export type RawDetails = {
 };
 
 /**
- * `{ "ids": ["949", …] }`, 1–15 TMDB film ids. Only digits: the site's own
+ * `{ "ids": ["949", …] }`, 1–100 TMDB film ids. Only digits: the site's own
  * ids for films TMDB doesn't know aren't TMDB's, and anything else would be
  * put into a TMDB path.
  */

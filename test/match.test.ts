@@ -43,6 +43,15 @@ describe("parseMatchBody", () => {
     });
   });
 
+  it("accepts a full batch of the longest titles", async () => {
+    const films = Array.from({ length: MAX_BATCH }, () => ({
+      title: "é".repeat(200),
+      year: 2001,
+      imdbId: "tt123456789012",
+    }));
+    expect(await parseMatchBody(post({ films }))).toMatchObject({ ok: true });
+  });
+
   it.each([
     ["not JSON", "films"],
     ["no films", {}],
@@ -66,7 +75,10 @@ describe("parseMatchBody", () => {
       "an IMDb id that isn't text",
       { films: [{ title: "Heat", imdbId: 113277 }] },
     ],
-    ["an oversized body", { films: [{ title: "x" }], pad: "a".repeat(17000) }],
+    [
+      "an oversized body",
+      { films: [{ title: "x" }], pad: "a".repeat(64 * 1024) },
+    ],
   ])("rejects %s", async (_, body) => {
     expect(await parseMatchBody(post(body))).toMatchObject({
       ok: false,

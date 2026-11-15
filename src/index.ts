@@ -86,17 +86,26 @@ export async function handleRequest(
 
   // Each endpoint has its own per-reader limit, so a big import or details
   // backfill can't lock a reader out of searching, or out of each other.
+  // Batches are charged a lookup per film, so their size can't be used to
+  // get round the limit; the IP limit still counts requests.
   const userLimit = {
     search: env.USER_LIMIT,
     match: env.MATCH_LIMIT,
     details: env.DETAILS_LIMIT,
   }[endpoint];
+  const lookups =
+    parsed.endpoint === "search"
+      ? 1
+      : parsed.endpoint === "match"
+        ? parsed.films.length
+        : parsed.ids.length;
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const [userAllowed, ipAllowed] = await Promise.all([
-    userLimit.limit({ key: uid }),
+  const outcomes = await Promise.all([
+    userLimit.limit({ key: uid, delta: lookups }),
     env.IP_LIMIT.limit({ key: ip }),
+    env.TMDB_LIMIT.limit({ key: "tmdb", delta: lookups }),
   ]);
-  if (!userAllowed.success || !ipAllowed.success) {
+  if (outcomes.some(({ success }) => !success)) {
     return error("Too many requests", 429, { "Retry-After": "60" });
   }
 
