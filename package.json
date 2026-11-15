@@ -11,6 +11,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@clusterflick/accounts": "0.1.0",
     "jose": "^6.2.12"
   },
   "devDependencies": {

@@ -4,7 +4,7 @@ import {
   FIREBASE_JWKS,
   getBearerToken,
   verifyFirebaseToken,
-} from "./auth";
+} from "@clusterflick/accounts/auth";
 import { getFilmDetails, parseDetailsBody } from "./details";
 import { matchFilms, parseMatchBody, type MatchFilm } from "./match";
 import {
