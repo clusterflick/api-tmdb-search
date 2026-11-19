@@ -1,7 +1,8 @@
 # api-tmdb-search
 
-> **[Clusterflick](https://clusterflick.com)** is a free, open-source site
-> listing every film showing in London, from 500+ venues in one search.
+> **[Clusterflick](https://clusterflick.com)** is the most complete guide to
+> film in London: every listing from 500+ venues, from multiplexes to pub back
+> rooms, in one search. Free and open source.
 >
 > This repository is the Cloudflare Worker behind the site's film search, which
 > lets signed-in readers add films that aren't showing to their lists. See the
